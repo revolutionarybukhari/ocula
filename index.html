@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>OCULA — Eye-Controlled Cursor</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #08080c;
+    --bg-2: #14141a;
+    --fg: #f0ede4;
+    --fg-dim: #8a877e;
+    --fg-faint: #2c2b27;
+    --accent: #ffb86b;
+    --accent-soft: rgba(255, 184, 107, 0.18);
+    --success: #5eead4;
+    --serif: "Instrument Serif", serif;
+    --mono: "JetBrains Mono", ui-monospace, monospace;
+    --sans: "Inter", system-ui, sans-serif;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: var(--bg);
+    color: var(--fg);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 30;
+    opacity: 0.04;
+    mix-blend-mode: overlay;
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  }
+
+  #webcam {
+    position: fixed;
+    bottom: 20px;
+    right: 20px;
+    width: 160px;
+    height: 90px;
+    object-fit: cover;
+    transform: scaleX(-1);
+    border: 1px solid var(--fg-faint);
+    border-radius: 4px;
+    z-index: 5;
+    opacity: 0.45;
+    transition: opacity 0.3s ease;
+  }
+  #webcam:hover { opacity: 0.9; }
+
+  .bracket {
+    position: fixed;
+    width: 24px;
+    height: 24px;
+    border-color: var(--fg);
+    opacity: 0.35;
+    z-index: 6;
+    pointer-events: none;
+  }
+  .bracket.tl { top: 22px; left: 22px; border-top: 1px solid; border-left: 1px solid; }
+  .bracket.tr { top: 22px; right: 22px; border-top: 1px solid; border-right: 1px solid; }
+  .bracket.bl { bottom: 22px; left: 22px; border-bottom: 1px solid; border-left: 1px solid; }
+  .bracket.br { bottom: 22px; right: 22px; border-bottom: 1px solid; border-right: 1px solid; }
+
+  /* ============ STATE-BASED VISIBILITY ============ */
+  .screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.45s ease;
+    z-index: 1;
+  }
+  body[data-state="welcome"]   .screen.welcome,
+  body[data-state="loading"]   .screen.loading,
+  body[data-state="calibrate"] .screen.calibrate,
+  body[data-state="tracking"]  .screen.tracking,
+  body[data-state="error"]     .screen.error {
+    opacity: 1;
+    pointer-events: auto;
+    z-index: 4;
+  }
+
+  /* ============ WELCOME ============ */
+  .welcome {
+    text-align: center;
+    padding: 40px;
+    max-width: 720px;
+  }
+  .welcome .eyebrow {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+    margin-bottom: 20px;
+  }
+  .welcome h1 {
+    font-family: var(--serif);
+    font-size: 96px;
+    font-weight: 400;
+    letter-spacing: 0.16em;
+    line-height: 1;
+    margin-bottom: 8px;
+    padding-left: 0.16em;
+  }
+  .welcome h1 .accent {
+    font-style: italic;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .welcome .tagline {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 22px;
+    color: var(--fg-dim);
+    margin-bottom: 48px;
+    letter-spacing: 0.01em;
+  }
+  .welcome .lede {
+    font-family: var(--sans);
+    font-size: 14px;
+    line-height: 1.8;
+    color: var(--fg-dim);
+    max-width: 520px;
+    margin: 0 auto 44px;
+    letter-spacing: 0.01em;
+  }
+  .welcome .steps {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 20px;
+    max-width: 600px;
+    margin: 0 auto 48px;
+    text-align: left;
+  }
+  .welcome .step {
+    border-top: 1px solid var(--fg-faint);
+    padding-top: 14px;
+  }
+  .welcome .step .num {
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.4em;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .welcome .step .body {
+    font-family: var(--sans);
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--fg-dim);
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 32px;
+    background: var(--accent);
+    color: #08080c;
+    border: none;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+  .cta:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 6px 20px rgba(255, 184, 107, 0.3);
+  }
+  .cta:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+  }
+
+  /* ============ LOADING ============ */
+  .loading {
+    text-align: center;
+  }
+  .loading .title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 48px;
+    color: var(--fg);
+    margin-bottom: 16px;
+  }
+  .loading .sub {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+  .spinner {
+    width: 18px;
+    height: 18px;
+    border: 1px solid var(--fg-faint);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin: 30px auto 0;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ============ CALIBRATION ============ */
+  .calibrate {
+    background: #050507;
+  }
+  .calib-instructions {
+    position: absolute;
+    top: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+    width: 100%;
+    max-width: 500px;
+  }
+  .calib-instructions .label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin-bottom: 14px;
+  }
+  .calib-instructions .text {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 26px;
+    color: var(--fg);
+    line-height: 1.4;
+  }
+  .calib-count {
+    position: absolute;
+    bottom: 60px;
+    left: 50%;
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+  }
+  .calib-count span { color: var(--accent); }
+  .calib-target {
+    position: absolute;
+    width: 56px;
+    height: 56px;
+    transform: translate(-50%, -50%);
+    transition: top 0.4s ease, left 0.4s ease;
+  }
+  .calib-target .outer {
+    position: absolute;
+    inset: 0;
+    border: 1px solid var(--fg-faint);
+    border-radius: 50%;
+  }
+  .calib-target .progress {
+    position: absolute;
+    inset: 0;
+    transform: rotate(-90deg);
+  }
+  .calib-target .progress circle {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-dasharray: 169.6;
+    stroke-dashoffset: 169.6;
+    transition: stroke-dashoffset 0.1s linear;
+  }
+  .calib-target .dot {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 10px;
+    height: 10px;
+    background: var(--accent);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 16px var(--accent);
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { transform: translate(-50%, -50%) scale(1); }
+    50%      { transform: translate(-50%, -50%) scale(1.4); }
+  }
+
+  /* ============ TRACKING — communication board ============ */
+  .tracking {
+    padding: 60px;
+  }
+  .board-header {
+    position: absolute;
+    top: 28px;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  .board-header .title {
+    font-family: var(--serif);
+    font-size: 28px;
+    letter-spacing: 0.22em;
+    padding-left: 0.22em;
+  }
+  .board-header .title .accent {
+    font-style: italic;
+    color: var(--accent);
+    letter-spacing: 0.05em;
+  }
+  .board-header .sub {
+    margin-top: 6px;
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.38em;
+    text-transform: uppercase;
+    color: var(--fg-faint);
+  }
+
+  .board {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    grid-template-rows: repeat(2, 1fr);
+    gap: 20px;
+    width: min(1100px, 96vw);
+    height: min(560px, 70vh);
+    margin: 100px auto 0;
+  }
+  .tile {
+    border: 1px solid var(--fg-faint);
+    background: var(--bg-2);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    cursor: pointer;
+    transition: border-color 0.3s ease, background 0.3s ease, transform 0.15s ease;
+    position: relative;
+    overflow: hidden;
+    padding: 24px;
+    user-select: none;
+  }
+  .tile:hover, .tile.gazed {
+    border-color: var(--accent);
+    background: var(--accent-soft);
+  }
+  .tile.firing {
+    background: var(--accent);
+    color: #08080c;
+    transform: scale(0.97);
+  }
+  .tile .icon {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 36px;
+    color: var(--accent);
+    margin-bottom: 12px;
+    line-height: 1;
+    transition: color 0.2s ease;
+  }
+  .tile.firing .icon { color: #08080c; }
+  .tile .text {
+    font-family: var(--serif);
+    font-size: 30px;
+    line-height: 1.15;
+    letter-spacing: 0.01em;
+    color: var(--fg);
+    transition: color 0.2s ease;
+  }
+  .tile.firing .text { color: #08080c; }
+
+  /* status bar */
+  .status-bar {
+    position: fixed;
+    bottom: 24px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 36px;
+    align-items: center;
+    padding: 12px 28px;
+    background: rgba(8, 8, 12, 0.85);
+    border: 1px solid var(--fg-faint);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    z-index: 7;
+  }
+  .status-bar .item { color: var(--fg-dim); }
+  .status-bar .item .v { color: var(--fg); margin-left: 6px; }
+  .status-bar .item .v.accent { color: var(--accent); }
+  .status-bar .dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--success);
+    margin-right: 6px;
+    vertical-align: 1px;
+    box-shadow: 0 0 8px var(--success);
+    animation: blink 1.4s ease-in-out infinite;
+  }
+  .status-bar .dot.warn { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .status-bar .dot.off  { background: var(--fg-faint); box-shadow: none; animation: none; }
+  @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+
+  .status-bar button {
+    background: transparent;
+    border: 1px solid var(--fg-faint);
+    color: var(--fg-dim);
+    font-family: var(--mono);
+    font-size: 9px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+  .status-bar button:hover, .status-bar button.gazed {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+  .status-bar button.firing {
+    background: var(--accent);
+    color: #08080c;
+    border-color: var(--accent);
+  }
+
+  /* ============ CURSOR ============ */
+  .cursor {
+    position: fixed;
+    width: 56px;
+    height: 56px;
+    transform: translate(-50%, -50%);
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0;
+    transition: opacity 0.35s ease;
+  }
+  body[data-state="tracking"] .cursor { opacity: 1; }
+  .cursor .ring {
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgba(255, 184, 107, 0.55);
+    border-radius: 50%;
+  }
+  .cursor .progress {
+    position: absolute;
+    inset: 0;
+    transform: rotate(-90deg);
+  }
+  .cursor .progress circle {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2.4;
+    stroke-dasharray: 169.6;
+    stroke-dashoffset: 169.6;
+    transition: stroke-dashoffset 0.06s linear;
+    filter: drop-shadow(0 0 6px var(--accent));
+  }
+  .cursor .center {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 8px;
+    height: 8px;
+    background: var(--accent);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    box-shadow: 0 0 12px var(--accent);
+  }
+
+  /* speech bubble that shows what was said */
+  .last-spoken {
+    position: fixed;
+    top: 80px;
+    left: 50%;
+    transform: translateX(-50%) translateY(-10px);
+    padding: 10px 22px;
+    background: rgba(8, 8, 12, 0.85);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 18px;
+    z-index: 8;
+    opacity: 0;
+    transition: opacity 0.3s ease, transform 0.3s ease;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    max-width: 80vw;
+    text-align: center;
+  }
+  .last-spoken.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* face-not-detected warning */
+  .face-warn {
+    position: fixed;
+    top: 110px;
+    left: 50%;
+    transform: translateX(-50%);
+    padding: 8px 18px;
+    background: rgba(8, 8, 12, 0.9);
+    border: 1px solid var(--accent);
+    color: var(--accent);
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    z-index: 9;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .face-warn.show { opacity: 1; }
+
+  /* error screen */
+  .error {
+    text-align: center;
+    padding: 40px;
+  }
+  .error .title {
+    font-family: var(--serif);
+    font-style: italic;
+    font-size: 48px;
+    color: var(--fg);
+    margin-bottom: 18px;
+  }
+  .error .msg {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.32em;
+    text-transform: uppercase;
+    color: var(--fg-dim);
+    max-width: 460px;
+    line-height: 2;
+  }
+
+  @media (max-width: 768px) {
+    .welcome h1 { font-size: 56px; }
+    .welcome .steps { grid-template-columns: 1fr; }
+    .board { grid-template-columns: repeat(2, 1fr); grid-template-rows: repeat(4, 1fr); height: min(700px, 78vh); }
+    .tile .text { font-size: 22px; }
+    .tile .icon { font-size: 28px; }
+    .board-header .title { font-size: 22px; }
+    .status-bar { flex-wrap: wrap; gap: 18px; padding: 10px 18px; }
+  }
+</style>
+</head>
+<body data-state="welcome">
+
+  <video id="webcam" playsinline autoplay muted></video>
+
+  <span class="bracket tl"></span>
+  <span class="bracket tr"></span>
+  <span class="bracket bl"></span>
+  <span class="bracket br"></span>
+
+  <!-- ============ WELCOME ============ -->
+  <div class="screen welcome">
+    <div class="eyebrow">Eye-Controlled Cursor · Accessibility Tool</div>
+    <h1>O C U L <span class="accent">a</span></h1>
+    <div class="tagline">Move the cursor with your gaze</div>
+    <p class="lede">
+      A free, browser-based assistive input device. No special hardware, no install — just your webcam.
+      Built for people who can't use a traditional mouse, and for anyone curious about what the technology can do.
+    </p>
+    <div class="steps">
+      <div class="step">
+        <div class="num">01</div>
+        <div class="body">Allow camera access when prompted. Sit ~50 cm from the screen.</div>
+      </div>
+      <div class="step">
+        <div class="num">02</div>
+        <div class="body">Calibrate by looking at five points on the screen.</div>
+      </div>
+      <div class="step">
+        <div class="num">03</div>
+        <div class="body">Dwell on a tile for 0.8 s — your eyes become the click.</div>
+      </div>
+    </div>
+    <button class="cta" id="begin-btn" disabled>
+      <span id="begin-text">Loading vision…</span>
+    </button>
+  </div>
+
+  <!-- ============ LOADING ============ -->
+  <div class="screen loading">
+    <div class="title">Preparing camera</div>
+    <div class="sub">Allow access in the browser prompt</div>
+    <div class="spinner"></div>
+  </div>
+
+  <!-- ============ CALIBRATION ============ -->
+  <div class="screen calibrate">
+    <div class="calib-instructions">
+      <div class="label">Calibration</div>
+      <div class="text">Look at the marker until it fills</div>
+    </div>
+    <div class="calib-target" id="calib-target">
+      <div class="outer"></div>
+      <svg class="progress" viewBox="0 0 56 56">
+        <circle cx="28" cy="28" r="27" id="calib-progress-circle"></circle>
+      </svg>
+      <div class="dot"></div>
+    </div>
+    <div class="calib-count">Point <span id="calib-num">1</span> of <span id="calib-total">5</span></div>
+  </div>
+
+  <!-- ============ TRACKING ============ -->
+  <div class="screen tracking">
+    <div class="board-header">
+      <div class="title">O C U L <span class="accent">a</span></div>
+      <div class="sub">Communication Board</div>
+    </div>
+    <div class="board" id="board">
+      <!-- tiles inserted by JS -->
+    </div>
+    <div class="status-bar">
+      <span class="item">
+        <span class="dot" id="status-dot"></span>
+        <span class="v" id="status-text">Tracking</span>
+      </span>
+      <span class="item">Clicks <span class="v accent" id="click-count">0</span></span>
+      <span class="item">Dwell <span class="v" id="dwell-display">0.8 s</span></span>
+      <button class="gaze-clickable" data-action="dwell-cycle" id="btn-dwell">Speed</button>
+      <button class="gaze-clickable" data-action="recalibrate" id="btn-recal">Recalibrate</button>
+    </div>
+  </div>
+
+  <!-- ============ ERROR ============ -->
+  <div class="screen error">
+    <div class="title">Vision unavailable</div>
+    <div class="msg" id="error-msg">Camera access was refused.</div>
+    <button class="cta" style="margin-top:32px" onclick="location.reload()">Retry</button>
+  </div>
+
+  <!-- cursor (always present) -->
+  <div class="cursor" id="cursor">
+    <div class="ring"></div>
+    <svg class="progress" viewBox="0 0 56 56">
+      <circle cx="28" cy="28" r="27" id="dwell-progress-circle"></circle>
+    </svg>
+    <div class="center"></div>
+  </div>
+
+  <div class="last-spoken" id="last-spoken"></div>
+  <div class="face-warn" id="face-warn">Face not detected — look at the camera</div>
+
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils@0.3/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/face_mesh.js" crossorigin="anonymous"></script>
+
+  <script>
+  /* ===========================================================================
+     OCULA — webcam eye-controlled cursor with calibration, dwell click,
+     and an AAC communication board demo.
+     ========================================================================= */
+  (() => {
+    'use strict';
+
+    // ───────── DOM refs ─────────
+    const video        = document.getElementById('webcam');
+    const beginBtn     = document.getElementById('begin-btn');
+    const beginText    = document.getElementById('begin-text');
+    const calibTarget  = document.getElementById('calib-target');
+    const calibProg    = document.getElementById('calib-progress-circle');
+    const calibNum     = document.getElementById('calib-num');
+    const calibTotal   = document.getElementById('calib-total');
+    const board        = document.getElementById('board');
+    const cursor       = document.getElementById('cursor');
+    const dwellProg    = document.getElementById('dwell-progress-circle');
+    const clickCountEl = document.getElementById('click-count');
+    const dwellDisplay = document.getElementById('dwell-display');
+    const statusDot    = document.getElementById('status-dot');
+    const statusText   = document.getElementById('status-text');
+    const lastSpoken   = document.getElementById('last-spoken');
+    const faceWarn     = document.getElementById('face-warn');
+    const errorMsg     = document.getElementById('error-msg');
+
+    // ───────── state ─────────
+    let appState = 'welcome'; // welcome | loading | calibrate | tracking | error
+    function setState(s) {
+      appState = s;
+      document.body.dataset.state = s;
+    }
+
+    // ───────── face mesh + gaze ─────────
+    let faceMesh = null;
+    let camera   = null;
+    let lastLandmarks = null;
+    let lastFaceTime  = 0;
+
+    // raw gaze vector (in eye-relative coordinates, before calibration)
+    let rawGaze = null;
+    // smoothed screen-space cursor position
+    let cursorX = window.innerWidth / 2;
+    let cursorY = window.innerHeight / 2;
+    let smoothedGazeX = null;
+    let smoothedGazeY = null;
+    const SMOOTH_ALPHA = 0.20;
+
+    // ───────── extract gaze vector from face landmarks ─────────
+    // FaceMesh iris landmarks (require refineLandmarks: true):
+    //   Right eye (user's right, screen left when mirrored):
+    //     outer corner 33, inner corner 133, top 159, bottom 145, iris center 468
+    //   Left eye:
+    //     outer corner 263, inner corner 362, top 386, bottom 374, iris center 473
+    function gazeFromLandmarks(lm) {
+      const eye = (outerIdx, innerIdx, topIdx, botIdx, irisIdx) => {
+        const outer = lm[outerIdx], inner = lm[innerIdx];
+        const top   = lm[topIdx],   bot   = lm[botIdx];
+        const iris  = lm[irisIdx];
+        if (!iris) return null;
+        // eye center = midpoint of inner/outer corners
+        const cx = (outer.x + inner.x) / 2;
+        const cy = (top.y + bot.y) / 2;
+        const w  = Math.hypot(outer.x - inner.x, outer.y - inner.y) || 1;
+        const h  = Math.hypot(top.y - bot.y, top.x - bot.x) || 1;
+        // iris position relative to eye center, normalized to eye size
+        return {
+          x: (iris.x - cx) / w,
+          y: (iris.y - cy) / h,
+        };
+      };
+      const g1 = eye(33,  133, 159, 145, 468);
+      const g2 = eye(263, 362, 386, 374, 473);
+      if (!g1 || !g2) return null;
+      return { x: (g1.x + g2.x) / 2, y: (g1.y + g2.y) / 2 };
+    }
+
+    // ───────── calibration ─────────
+    // 5 calibration points placed at 4 corners + center (in % of viewport)
+    const CALIB_POINTS = [
+      { px: 0.10, py: 0.15 },
+      { px: 0.90, py: 0.15 },
+      { px: 0.50, py: 0.50 },
+      { px: 0.10, py: 0.85 },
+      { px: 0.90, py: 0.85 },
+    ];
+    const CALIB_SAMPLE_DURATION = 1500; // ms looking at each point
+    const CALIB_SAMPLE_DELAY    = 600;  // ms before sampling starts (let gaze settle)
+
+    let calibIndex = 0;
+    let calibSamples = [];        // current point's gaze vectors
+    let calibPointStart = 0;
+    let calibrationData = [];     // [{ gaze: {x,y}, screen: {x,y} }, ...]
+    let gazeToScreenFn = null;    // returns {x, y} given gaze vector
+
+    function startCalibration() {
+      setState('calibrate');
+      calibrationData = [];
+      calibIndex = 0;
+      calibTotal.textContent = String(CALIB_POINTS.length);
+      nextCalibPoint();
+    }
+
+    function nextCalibPoint() {
+      if (calibIndex >= CALIB_POINTS.length) {
+        finishCalibration();
+        return;
+      }
+      const p = CALIB_POINTS[calibIndex];
+      const x = p.px * window.innerWidth;
+      const y = p.py * window.innerHeight;
+      calibTarget.style.left = x + 'px';
+      calibTarget.style.top  = y + 'px';
+      calibNum.textContent = String(calibIndex + 1);
+      calibSamples = [];
+      calibPointStart = performance.now();
+      calibProg.style.strokeDashoffset = '169.6';
+    }
+
+    function tickCalibration() {
+      if (appState !== 'calibrate') return;
+      const now = performance.now();
+      const elapsed = now - calibPointStart;
+      const progress = Math.min(1, elapsed / CALIB_SAMPLE_DURATION);
+      calibProg.style.strokeDashoffset = String(169.6 * (1 - progress));
+
+      // sample raw gaze after settle delay
+      if (rawGaze && elapsed > CALIB_SAMPLE_DELAY) {
+        calibSamples.push({ x: rawGaze.x, y: rawGaze.y });
+      }
+
+      if (elapsed >= CALIB_SAMPLE_DURATION) {
+        // commit median of samples
+        if (calibSamples.length >= 5) {
+          const mx = median(calibSamples.map(s => s.x));
+          const my = median(calibSamples.map(s => s.y));
+          const p  = CALIB_POINTS[calibIndex];
+          calibrationData.push({
+            gaze:   { x: mx, y: my },
+            screen: { x: p.px * window.innerWidth, y: p.py * window.innerHeight },
+          });
+        }
+        calibIndex++;
+        nextCalibPoint();
+      }
+    }
+
+    function median(arr) {
+      const s = [...arr].sort((a, b) => a - b);
+      const m = Math.floor(s.length / 2);
+      return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+    }
+
+    function finishCalibration() {
+      if (calibrationData.length < 3) {
+        // failed
+        showError('Calibration failed. Make sure your face is visible and try again.');
+        return;
+      }
+      gazeToScreenFn = fitAffine(calibrationData);
+      if (!gazeToScreenFn) {
+        showError('Calibration failed — gaze data was too noisy. Try again with better lighting.');
+        return;
+      }
+      // reset smoothing
+      smoothedGazeX = null;
+      smoothedGazeY = null;
+      setState('tracking');
+    }
+
+    // ───────── affine least-squares fit ─────────
+    // Solves screenX = a*gx + b*gy + c  (and same for Y) over all calibration points
+    function fitAffine(points) {
+      // Build sums for normal equations (3x3 symmetric matrix)
+      let m00 = 0, m01 = 0, m02 = 0, m11 = 0, m12 = 0, m22 = 0;
+      let bx0 = 0, bx1 = 0, bx2 = 0, by0 = 0, by1 = 0, by2 = 0;
+      for (const p of points) {
+        const gx = p.gaze.x, gy = p.gaze.y;
+        const sx = p.screen.x, sy = p.screen.y;
+        m00 += gx * gx; m01 += gx * gy; m02 += gx;
+                        m11 += gy * gy; m12 += gy;
+                                        m22 += 1;
+        bx0 += gx * sx; bx1 += gy * sx; bx2 += sx;
+        by0 += gx * sy; by1 += gy * sy; by2 += sy;
+      }
+      const det3 = (a, b, c, d, e, f, g, h, i) =>
+        a * (e * i - f * h) - b * (d * i - f * g) + c * (d * h - e * g);
+      const D = det3(m00, m01, m02, m01, m11, m12, m02, m12, m22);
+      if (Math.abs(D) < 1e-10) return null;
+
+      const ax = det3(bx0, m01, m02, bx1, m11, m12, bx2, m12, m22) / D;
+      const bx = det3(m00, bx0, m02, m01, bx1, m12, m02, bx2, m22) / D;
+      const cx = det3(m00, m01, bx0, m01, m11, bx1, m02, m12, bx2) / D;
+      const ay = det3(by0, m01, m02, by1, m11, m12, by2, m12, m22) / D;
+      const by = det3(m00, by0, m02, m01, by1, m12, m02, by2, m22) / D;
+      const cy = det3(m00, m01, by0, m01, m11, by1, m02, m12, by2) / D;
+
+      return (gx, gy) => ({
+        x: ax * gx + bx * gy + cx,
+        y: ay * gx + by * gy + cy,
+      });
+    }
+
+    // ───────── cursor + smoothing + dwell click ─────────
+    let DWELL_TIME = 800;   // ms
+    let dwellAnchor = null;
+    let dwellStart = 0;
+    let lastFireAt = 0;
+    let gazedEl = null;
+    const DWELL_RADIUS = 55; // pixels
+    const FIRE_COOLDOWN = 600; // ms after a click
+
+    function updateCursor() {
+      if (appState !== 'tracking' || !gazeToScreenFn || !rawGaze) return;
+      const raw = gazeToScreenFn(rawGaze.x, rawGaze.y);
+      // exponential smoothing
+      if (smoothedGazeX === null) {
+        smoothedGazeX = raw.x;
+        smoothedGazeY = raw.y;
+      } else {
+        smoothedGazeX = smoothedGazeX * (1 - SMOOTH_ALPHA) + raw.x * SMOOTH_ALPHA;
+        smoothedGazeY = smoothedGazeY * (1 - SMOOTH_ALPHA) + raw.y * SMOOTH_ALPHA;
+      }
+      // clamp to viewport
+      cursorX = Math.max(0, Math.min(window.innerWidth,  smoothedGazeX));
+      cursorY = Math.max(0, Math.min(window.innerHeight, smoothedGazeY));
+      cursor.style.left = cursorX + 'px';
+      cursor.style.top  = cursorY + 'px';
+
+      // hit-test for hover highlight
+      cursor.style.display = 'none';
+      const el = document.elementFromPoint(cursorX, cursorY);
+      cursor.style.display = '';
+      const clickable = el && el.closest('.gaze-clickable, .tile');
+
+      // clear previous gazed highlight if it changed
+      if (gazedEl && gazedEl !== clickable) {
+        gazedEl.classList.remove('gazed');
+      }
+      if (clickable) {
+        clickable.classList.add('gazed');
+      }
+      gazedEl = clickable;
+
+      // dwell logic
+      const now = performance.now();
+      if (now - lastFireAt < FIRE_COOLDOWN) {
+        // cooldown — show no dwell progress
+        dwellProg.style.strokeDashoffset = '169.6';
+        return;
+      }
+      if (!clickable) {
+        // not over anything clickable — reset dwell
+        dwellAnchor = null;
+        dwellProg.style.strokeDashoffset = '169.6';
+        return;
+      }
+      if (!dwellAnchor) {
+        dwellAnchor = { x: cursorX, y: cursorY, el: clickable };
+        dwellStart = now;
+        return;
+      }
+      // if cursor wandered out of the dwell zone OR onto a different element → reset anchor
+      const moved = Math.hypot(cursorX - dwellAnchor.x, cursorY - dwellAnchor.y);
+      if (moved > DWELL_RADIUS || dwellAnchor.el !== clickable) {
+        dwellAnchor = { x: cursorX, y: cursorY, el: clickable };
+        dwellStart = now;
+        dwellProg.style.strokeDashoffset = '169.6';
+        return;
+      }
+      // accumulate dwell
+      const dwellElapsed = now - dwellStart;
+      const frac = Math.min(1, dwellElapsed / DWELL_TIME);
+      dwellProg.style.strokeDashoffset = String(169.6 * (1 - frac));
+      if (frac >= 1) {
+        fireClick(clickable);
+        lastFireAt = now;
+        dwellAnchor = null;
+        dwellProg.style.strokeDashoffset = '169.6';
+      }
+    }
+
+    let clickCount = 0;
+    function fireClick(el) {
+      clickCount++;
+      clickCountEl.textContent = String(clickCount);
+      el.classList.add('firing');
+      setTimeout(() => el.classList.remove('firing'), 220);
+
+      // dispatch a real click so any handler fires
+      el.click();
+
+      // optional: speak if it's a tile
+      const phrase = el.dataset.phrase;
+      if (phrase) speak(phrase);
+    }
+
+    // ───────── speech synth ─────────
+    function speak(phrase) {
+      try {
+        const u = new SpeechSynthesisUtterance(phrase);
+        u.rate = 0.95;
+        u.pitch = 1.0;
+        u.volume = 1.0;
+        speechSynthesis.cancel();
+        speechSynthesis.speak(u);
+      } catch (e) { /* no-op */ }
+      // show the phrase visually for accessibility
+      lastSpoken.textContent = '"' + phrase + '"';
+      lastSpoken.classList.add('show');
+      clearTimeout(speak._t);
+      speak._t = setTimeout(() => lastSpoken.classList.remove('show'), 2200);
+    }
+
+    // ───────── communication board ─────────
+    const PHRASES = [
+      { icon: '✓',  text: 'Yes',          phrase: 'Yes.' },
+      { icon: '✗',  text: 'No',           phrase: 'No.' },
+      { icon: '♡',  text: 'Thank you',    phrase: 'Thank you.' },
+      { icon: '○',  text: 'Hello',        phrase: 'Hello.' },
+      { icon: '!',  text: 'Help me',      phrase: 'I need help, please.' },
+      { icon: '~',  text: 'Water',        phrase: 'I would like some water, please.' },
+      { icon: '☾',  text: 'I am tired',   phrase: 'I am tired.' },
+      { icon: '☎',  text: 'Call family',  phrase: 'Please call my family.' },
+    ];
+
+    function buildBoard() {
+      board.innerHTML = '';
+      for (const p of PHRASES) {
+        const t = document.createElement('div');
+        t.className = 'tile gaze-clickable';
+        t.dataset.phrase = p.phrase;
+        t.innerHTML = `<div class="icon">${p.icon}</div><div class="text">${p.text}</div>`;
+        board.appendChild(t);
+      }
+    }
+
+    // ───────── controls ─────────
+    document.addEventListener('click', (e) => {
+      const t = e.target.closest('[data-action]');
+      if (!t) return;
+      const action = t.dataset.action;
+      if (action === 'recalibrate') startCalibration();
+      else if (action === 'dwell-cycle') {
+        const options = [500, 800, 1200];
+        const idx = options.indexOf(DWELL_TIME);
+        DWELL_TIME = options[(idx + 1) % options.length];
+        dwellDisplay.textContent = (DWELL_TIME / 1000).toFixed(1) + ' s';
+      }
+    });
+
+    beginBtn.addEventListener('click', () => {
+      if (beginBtn.disabled) return;
+      startCalibration();
+    });
+
+    window.addEventListener('keydown', (e) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const k = e.key.toLowerCase();
+      if (k === 'r' && appState === 'tracking') startCalibration();
+      if (k === 'escape') location.reload();
+    });
+
+    window.addEventListener('resize', () => {
+      // calibration is no longer accurate after a resize — force recalibrate next time
+      if (appState === 'tracking') {
+        gazeToScreenFn = null;
+        statusDot.classList.add('warn');
+        statusText.textContent = 'Resize — recalibrate';
+      }
+    });
+
+    // ───────── MediaPipe wiring ─────────
+    function onResults(results) {
+      const now = performance.now();
+      if (!results.multiFaceLandmarks || results.multiFaceLandmarks.length === 0) {
+        lastLandmarks = null;
+        rawGaze = null;
+        return;
+      }
+      lastLandmarks = results.multiFaceLandmarks[0];
+      const g = gazeFromLandmarks(lastLandmarks);
+      if (g) {
+        // mirror x since the video is mirrored
+        rawGaze = { x: -g.x, y: g.y };
+        lastFaceTime = now;
+      }
+    }
+
+    function showError(msg) {
+      errorMsg.textContent = msg;
+      setState('error');
+    }
+
+    async function start() {
+      try {
+        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+          showError('This browser does not expose a camera API.');
+          return;
+        }
+        if (typeof FaceMesh === 'undefined' || typeof Camera === 'undefined') {
+          showError('Vision libraries failed to load. Check your connection and refresh.');
+          return;
+        }
+
+        faceMesh = new FaceMesh({
+          locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh@0.4/${file}`,
+        });
+        faceMesh.setOptions({
+          maxNumFaces: 1,
+          refineLandmarks: true,        // ← required for iris landmarks
+          minDetectionConfidence: 0.5,
+          minTrackingConfidence:  0.5,
+        });
+        faceMesh.onResults(onResults);
+
+        camera = new Camera(video, {
+          onFrame: async () => { await faceMesh.send({ image: video }); },
+          width: 640,
+          height: 480,
+        });
+        await camera.start();
+
+        // ready
+        beginBtn.disabled = false;
+        beginText.textContent = 'Begin Calibration';
+      } catch (e) {
+        console.error(e);
+        const msg = (e && e.name === 'NotAllowedError')
+          ? 'Camera permission was denied. Allow access and refresh.'
+          : 'Could not initialise the camera. ' + (e && e.message ? e.message : '');
+        showError(msg);
+      }
+    }
+
+    // ───────── main loop ─────────
+    function loop() {
+      requestAnimationFrame(loop);
+      const now = performance.now();
+
+      // face-detection warning (after we've been tracking for a bit)
+      if (appState === 'tracking') {
+        const stale = (now - lastFaceTime) > 700;
+        faceWarn.classList.toggle('show', stale);
+        if (stale) {
+          statusDot.classList.add('off');
+          statusText.textContent = 'No face';
+        } else {
+          statusDot.classList.remove('off', 'warn');
+          statusText.textContent = 'Tracking';
+        }
+      } else {
+        faceWarn.classList.remove('show');
+      }
+
+      if (appState === 'calibrate') tickCalibration();
+      else if (appState === 'tracking') updateCursor();
+    }
+
+    buildBoard();
+    dwellDisplay.textContent = (DWELL_TIME / 1000).toFixed(1) + ' s';
+    start();
+    loop();
+  })();
+  </script>
+</body>
+</html>
